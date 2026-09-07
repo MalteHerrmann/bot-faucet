@@ -7,20 +7,45 @@ interface IFundsDispenser {
      */
     // TODO:  move to ERC-7201 storage
     struct FundsRequestConfig {
-        /// The maximum balance an account can have before requesting funds.
-        uint256 thresholdBalance;
-        /// The limit of requestable funds per duration (e.g. 0.2 ETH per month).
-        uint256 grantedFundsPerDuration;
         /// The amount of native tokens sent upon a successful request.
         uint256 amount;
+        /// The cooldown period before being able to claim again.
+        uint256 cooldown;
+        /// The limit of requestable funds per epoch (e.g. 0.2 ETH per month).
+        uint256 grantedFundsPerEpoch;
+        /// The duration of each epoch after which requested funds reset.
+        uint256 epochDuration;
+        /// The maximum balance an account can have before requesting funds.
+        uint256 thresholdBalance;
+    }
+
+    /**
+     * @notice The information about paid out funds requests.
+     */
+    struct PayoutInfo {
+        /// The amount of funds paid during this interval.
+        uint256 amount;
+        /// The current epoch since the time of registration.
+        /// TODO: convert to uint64 by using SafeMath.
+        uint256 epoch;
+        /// The timestamp of the last fulfilled request.
+        uint256 lastPayout;
     }
 
     /**
      * @notice Thrown in case the requesting bot still has too many funds in the account to request new funding.
-     * @param requester The address that requests funds.
+     * @param requester The address requesting funds.
      * @param balance The balance of the account.
      */
     error BalanceTooHigh(address requester, uint256 balance);
+
+    /**
+     * @notice Thrown when another funds request comes in before the cooldown is elapsed.
+     * @param requester The address requesting funds.
+     * @param cooldown The configured cooldown period.
+     * @param elapsed The time elapsed since last payout.
+     */
+    error CooldownNotElapsed(address requester, uint256 cooldown, uint256 elapsed);
 
     /**
      * @notice Thrown when trying to register an empty address.
@@ -80,7 +105,8 @@ interface IFundsDispenser {
     function requestFunds() external;
 
     /**
-     * @notice Registers a new account that can request funds.
+     * @notice Registers or updates an account that can request funds.
+     * @dev This also resets the payout info, which means that limits are reset.
      * @param requester The address of the requesting account.
      * @param config The configuration for requests.
      */

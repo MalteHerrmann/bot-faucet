@@ -10,6 +10,8 @@ import { IFundsDispenser } from "./IFundsDispenser.sol";
  *         for them to operate normally without having to hold large quantities of funds,
  *         while keeping operational burdens low for the Engineering team.
  * @dev TODO: move behind proxy?
+ * @dev TODO: create ERC-7201 storage pattern
+ * @dev TODO: add lastClaimed and a cooldown period to avoid potential exploits
  */
 contract FundsDispenser is IFundsDispenser {
   // ---------------------------------------------------------------------------
@@ -19,14 +21,14 @@ contract FundsDispenser is IFundsDispenser {
   /// The contract's admin.
   address private _admin;
 
-  /// The duration of an epoch before the faucet counter is reset.
-  uint256 public epochDuration;
-
-  /// The map of approved funds request configs.
+  /// The map of approved funds request configs per address.
   mapping(address => FundsRequestConfig) internal _approvedRequestConfigs;
 
-  /// The map of summed payout amounts per bot address.
-  mapping(address => uint256) internal _fundsRequestThisInterval;
+  /// The map of summed payout amounts per address.
+  mapping(address => PayoutInfo) internal _payoutInfo;
+
+  /// The map of timestamps of last registration update per address.
+  mapping(address => uint256) internal _registrationUpdatedAt;
 
   // ---------------------------------------------------------------------------
   //                               CONSTRUCTOR
@@ -68,10 +70,17 @@ contract FundsDispenser is IFundsDispenser {
    */
   function requestFunds() external {
     address requester = msg.sender;
-    FundsRequestConfig memory config = _approvedRequestConfigs[requester];
-    if (!_validateBotConfig(config)) {
+    if (_registrationUpdatedAt[requester] == 0) {
       revert NotRegistered(requester);
     }
+
+    FundsRequestConfig memory config = _approvedRequestConfigs[requester];
+    PayoutInfo memory payoutInfo = _payoutInfo[requester];
+
+    // TODO: use SafeMath here?
+    // The epoch update has to happen first to reset the limits before validating the request.
+    uint256 currentEpoch = (block.timestamp - _registrationUpdatedAt[requester]) / config.epochDuration;
+    _updateEpoch(requester, currentEpoch - payoutInfo.epoch);
 
     _validateRequest(requester, config);
 
@@ -79,6 +88,8 @@ contract FundsDispenser is IFundsDispenser {
     if (!sent) {
       revert FailedToSend(requester, config.amount);
     }
+
+    _updateRequestsMade(requester, config.amount);
 
     emit FundsDistributed(requester, config.amount);
   }
@@ -91,11 +102,13 @@ contract FundsDispenser is IFundsDispenser {
       revert EmptyAddress();
     }
 
-    if (!_validateBotConfig(config)) {
+    if (!_validateConfig(config)) {
       revert InvalidConfig();
     }
 
     _approvedRequestConfigs[requester] = config;
+    _payoutInfo[requester] = PayoutInfo(0, 0, 0);
+    _registrationUpdatedAt[requester] = block.timestamp;
 
     emit RegistrationUpdated(requester);
   }
@@ -104,11 +117,12 @@ contract FundsDispenser is IFundsDispenser {
    * @inheritdoc IFundsDispenser
    */
   function removeRequester(address requester) external onlyAdmin {
-    if (!_validateBotConfig(_approvedRequestConfigs[requester])) {
+    if (!_validateConfig(_approvedRequestConfigs[requester])) {
       revert NotRegistered(requester);
     }
 
     delete _approvedRequestConfigs[requester];
+    delete _payoutInfo[requester];
 
     emit RegistrationRemoved(requester);
   }
@@ -122,18 +136,20 @@ contract FundsDispenser is IFundsDispenser {
    * @param config The configuration to validate.
    * @return valid A boolean value whether the configuration is valid or not.
    */
-  function _validateBotConfig(FundsRequestConfig memory config) internal pure returns (bool) {
-    if (config.grantedFundsPerDuration == 0) {
+  function _validateConfig(FundsRequestConfig memory config) internal pure returns (bool) {
+    if (config.grantedFundsPerEpoch == 0) return false;
+
+    // NOTE: the amount per payout must not be greater than the total granted funds per duration.
+    if (config.amount == 0 || config.amount > config.grantedFundsPerEpoch) {
       return false;
     }
 
-    if (config.amount == 0) {
-      return false;
-    }
+    if (config.epochDuration == 0) return false;
 
-    if (config.thresholdBalance == 0) {
-      return false;
-    }
+    // NOTE: we currently don't accept cooldown periods longer than the interval.
+    if (config.cooldown >= config.epochDuration) return false;
+
+    if (config.thresholdBalance == 0) return false;
 
     return true;
   }
@@ -141,17 +157,55 @@ contract FundsDispenser is IFundsDispenser {
   /**
    * @notice Validates the funds request and reverts the transaction if e.g. the
    *         funds limit per epoch is reached.
-   * @param receiver The address receiving the gas tokens.
+   * @param requester The address receiving the gas tokens.
    * @param config The configuration to validate the request against.
    */
-  function _validateRequest(address receiver, FundsRequestConfig memory config) internal view {
-    uint256 bal = receiver.balance;
+  function _validateRequest(address requester, FundsRequestConfig memory config) internal view {
+    uint256 bal = requester.balance;
     if (bal > config.thresholdBalance) {
-      revert BalanceTooHigh(receiver, bal);
+      revert BalanceTooHigh(requester, bal);
     }
 
-    if (_fundsRequestThisInterval[receiver] + config.amount > config.grantedFundsPerDuration) {
-      revert LimitReached(receiver, config.grantedFundsPerDuration);
+    // Only check for cooldown if there has already been a payout.
+    PayoutInfo memory payoutInfo = _payoutInfo[requester];
+    if (payoutInfo.lastPayout > 0) {
+      uint256 elapsed = payoutInfo.lastPayout - block.timestamp;
+      if (elapsed < config.cooldown) {
+        revert CooldownNotElapsed(requester, config.cooldown, elapsed);
+      }
     }
+
+    // TODO: The epoch check has to be applied at this point already, because limits should already be reset here!
+    if (payoutInfo.amount + config.amount > config.grantedFundsPerEpoch) {
+      revert LimitReached(requester, config.grantedFundsPerEpoch);
+    }
+  }
+
+  /**
+   * @notice Updates to a new epoch for a given address.
+   * @dev No-ops in case no epoch has passed.
+   * @param requester The address whose epoch is updated.
+   * @param n The number of epochs to increase.
+   */
+  function _updateEpoch(address requester, uint256 n) internal {
+    // no-op in case 0 is passed.
+    if (n == 0) return;
+
+    PayoutInfo storage updatedPayoutInfo = _payoutInfo[requester];
+    updatedPayoutInfo.amount = 0;
+    updatedPayoutInfo.epoch += n;
+
+    // TODO: emit Epoch event?
+  }
+
+  /**
+   * @notice Updates the storage to reflect successful funds requests.
+   * @param requester The address that successfully requested funds.
+   * @param amount The amount that was sent.
+   */
+  function _updateRequestsMade(address requester, uint256 amount) internal {
+    PayoutInfo storage updatedPayoutInfo = _payoutInfo[requester];
+    updatedPayoutInfo.lastPayout = block.timestamp;
+    updatedPayoutInfo.amount += amount;
   }
 }
