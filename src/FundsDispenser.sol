@@ -169,13 +169,12 @@ contract FundsDispenser is IFundsDispenser {
     // Only check for cooldown if there has already been a payout.
     PayoutInfo memory payoutInfo = _payoutInfo[requester];
     if (payoutInfo.lastPayout > 0) {
-      uint256 elapsed = payoutInfo.lastPayout - block.timestamp;
+      uint256 elapsed = block.timestamp - payoutInfo.lastPayout;
       if (elapsed < config.cooldown) {
         revert CooldownNotElapsed(requester, config.cooldown, elapsed);
       }
     }
 
-    // TODO: The epoch check has to be applied at this point already, because limits should already be reset here!
     if (payoutInfo.amount + config.amount > config.grantedFundsPerEpoch) {
       revert LimitReached(requester, config.grantedFundsPerEpoch);
     }
