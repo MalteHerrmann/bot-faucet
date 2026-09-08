@@ -108,34 +108,43 @@ contract FundsDispenserTest is Test {
     _requestFunds(REGISTERED_USER);
   }
 
-//  function test_RequestFunds_ResetsAfterInterval() public {
-//    IFundsDispenser.FundsRequestConfig memory config = dispenser.getFundsRequestConfig(REGISTERED_USER);
-//
-//    console.log("current timestamp", block.timestamp);
-//    uint256 timestampAfterCooldown = block.timestamp + config.cooldown;
-//    vm.warp(timestampAfterCooldown);
-//    console.log("current timestamp", block.timestamp);
-//
-//    // ACT: set the paid out amount close to the limit, but outside of cooldown window to limit on amount, not time.
-//    IFundsDispenser.PayoutInfo memory closeToLimit = IFundsDispenser.PayoutInfo(
-//      config.grantedFundsPerEpoch - config.amount + 1, // this will tip the amount 1 wei over the limit
-//      0,
-//      block.timestamp - config.cooldown // this will allow claiming based on cooldown
-//    );
-//
-//    dispenser.setPayoutInfo(REGISTERED_USER, closeToLimit);
-//
-//    vm.expectRevert(
-//      abi.encodeWithSelector(
-//        IFundsDispenser.LimitReached.selector, REGISTERED_USER, config.grantedFundsPerEpoch
-//      )
-//    );
-//    vm.prank(REGISTERED_USER);
-//    dispenser.requestFunds();
-//
-//    uint256 timestampAfterInterval = block.timestamp + config.epochDuration;
-//    // TODO: continue here
-//  }
+  function test_RequestFunds_ResetsAfterInterval() public {
+    IFundsDispenser.FundsRequestConfig memory config = dispenser.getFundsRequestConfig(REGISTERED_USER);
+
+    uint256 timestampAfterCooldown = block.timestamp + config.cooldown;
+    vm.warp(timestampAfterCooldown);
+
+    // ACT: set the paid out amount close to the limit, but outside of cooldown window to limit on amount, not time.
+    IFundsDispenser.PayoutInfo memory closeToLimit = IFundsDispenser.PayoutInfo(
+      config.grantedFundsPerEpoch - config.amount + 1, // this will tip the amount 1 wei over the limit
+      0,
+      block.timestamp - config.cooldown // this will allow claiming based on cooldown
+    );
+
+    dispenser.setPayoutInfo(REGISTERED_USER, closeToLimit);
+
+    vm.expectRevert(
+      abi.encodeWithSelector(
+        IFundsDispenser.LimitReached.selector, REGISTERED_USER, config.grantedFundsPerEpoch
+      )
+    );
+    vm.prank(REGISTERED_USER);
+    dispenser.requestFunds();
+
+    // ASSERT: after epoch end it should be possible to request funds again. We're testing multiple epochs passing here.
+    uint256 timestampAfterInterval = block.timestamp + 2 * config.epochDuration;
+    vm.warp(timestampAfterInterval);
+
+    _requestFunds(REGISTERED_USER);
+
+    // ASSERT: payout info has been updated accordingly
+    IFundsDispenser.PayoutInfo memory payoutInfoPostEpoch = dispenser.getPayoutInfo(REGISTERED_USER);
+    assertEq(payoutInfoPostEpoch.amount, config.amount); // after the epoch the amount should be reset to zero and then only show the one requested amount.
+    assertEq(payoutInfoPostEpoch.lastPayout, block.timestamp);
+    assertEq(payoutInfoPostEpoch.epoch, 2); // check that the epoch was bumped and not only incremented.
+  }
+
+  // TODO: add cooldown test here.
 
   // -------------------------------------------------------
   //                        HELPERS
@@ -154,5 +163,8 @@ contract FundsDispenserTest is Test {
 
     // ASSERT: balance has changed
     assert(sender.balance == balancePre + senderConfig.amount);
+
+    // ASSERT: payout info should be updated with last claim (other values depend on external factors so we're not asserting them here).
+    assertEq(dispenser.getPayoutInfo(sender).lastPayout, block.timestamp);
   }
 }

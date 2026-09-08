@@ -25,6 +25,13 @@ contract FundsDispenserHarness is FundsDispenser {
     }
 
     /**
+     * @notice Exposes the payout info query for tests.
+     */
+    function getPayoutInfo(address requester) external view returns (PayoutInfo memory) {
+        return _payoutInfo[requester];
+    }
+
+    /**
      * @notice Just a utility to create a new FundsRequestConfig.
      */
     function newFundsRequestConfig(
