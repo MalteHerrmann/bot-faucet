@@ -119,12 +119,13 @@ contract FundsDispenser is IFundsDispenser, ReentrancyGuard {
      * @inheritdoc IFundsDispenser
      */
     function removeRequester(address requester) external onlyAdmin {
-        if (!_validateConfig(_approvedRequestConfigs[requester])) {
+        if (_registrationUpdatedAt[requester] == 0) {
             revert NotRegistered(requester);
         }
 
         delete _approvedRequestConfigs[requester];
         delete _payoutInfo[requester];
+        delete _registrationUpdatedAt[requester];
 
         emit RegistrationRemoved(requester);
     }

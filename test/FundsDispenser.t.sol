@@ -75,10 +75,52 @@ contract FundsDispenserTest is Test {
         assertEq(dispenser.getRegistrationUpdatedAt(newUser), block.timestamp);
     }
 
+    function test_RemoveRequester_FailsForNonAdmin() public {
+        // ASSERT: non-admin cannot remove.
+        vm.expectRevert(IFundsDispenser.Unauthorized.selector);
+        vm.prank(REGISTERED_USER);
+        dispenser.removeRequester(REGISTERED_USER);
+    }
+
+    function test_RemoveRequester_NotRegistered() public {
+        // ASSERT: removing an unregistered account reverts.
+        vm.expectRevert(abi.encodeWithSelector(IFundsDispenser.NotRegistered.selector, NOT_REGISTERED_USER));
+        vm.prank(ADMIN);
+        dispenser.removeRequester(NOT_REGISTERED_USER);
+    }
+
+    function test_RemoveRequester_Success() public {
+        // ASSERT: admin can remove.
+        vm.expectEmit();
+        emit IFundsDispenser.RegistrationRemoved(REGISTERED_USER);
+        vm.prank(ADMIN);
+        dispenser.removeRequester(REGISTERED_USER);
+
+        // ASSERT: all registration state is cleared.
+        assertEq(dispenser.getRegistrationUpdatedAt(REGISTERED_USER), 0);
+
+        IFundsDispenser.PayoutInfo memory payoutInfo = dispenser.getPayoutInfo(REGISTERED_USER);
+        assertEq(payoutInfo.amount, 0);
+        assertEq(payoutInfo.epoch, 0);
+        assertEq(payoutInfo.lastPayout, 0);
+
+        assertFalse(dispenser.validateConfig(dispenser.getFundsRequestConfig(REGISTERED_USER)));
+    }
+
     function test_RequestFunds_Fail_NotRegistered() public {
         // ASSERT: unregistered account should revert
         vm.expectRevert(abi.encodeWithSelector(IFundsDispenser.NotRegistered.selector, NOT_REGISTERED_USER));
         vm.prank(NOT_REGISTERED_USER);
+        dispenser.requestFunds();
+    }
+
+    function test_RequestFunds_Fail_AfterRemoval() public {
+        vm.prank(ADMIN);
+        dispenser.removeRequester(REGISTERED_USER);
+
+        // ASSERT: removed account should revert with NotRegistered.
+        vm.expectRevert(abi.encodeWithSelector(IFundsDispenser.NotRegistered.selector, REGISTERED_USER));
+        vm.prank(REGISTERED_USER);
         dispenser.requestFunds();
     }
 
