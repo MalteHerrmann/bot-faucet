@@ -8,6 +8,7 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 import {
     IAccessControlDefaultAdminRules
 } from "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 import {FundsDispenserHarness} from "./FundsDispenserHarness.sol";
 import {ReentrantRequester} from "./mocks/ReentrantRequester.sol";
@@ -334,6 +335,79 @@ contract FundsDispenserTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IFundsDispenser.FailedToSend.selector, address(receiver), 1));
         vm.prank(ADMIN);
         dispenser.withdraw(address(receiver), 1);
+    }
+
+    function test_Pause_BlocksRequestFunds() public {
+        // ACT: admin pauses.
+        vm.expectEmit();
+        emit Pausable.Paused(ADMIN);
+        vm.prank(ADMIN);
+        dispenser.pause();
+
+        // ASSERT: funds requests revert while paused.
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        vm.prank(REGISTERED_USER);
+        dispenser.requestFunds();
+    }
+
+    function test_Pause_FailsWithoutRole() public {
+        // ASSERT: an account without `PAUSER_ROLE` cannot pause.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, REGISTERED_USER, dispenser.PAUSER_ROLE()
+            )
+        );
+        vm.prank(REGISTERED_USER);
+        dispenser.pause();
+    }
+
+    function test_Unpause_FailsForPauser() public {
+        address pauser = makeAddr("pauser");
+        bytes32 pauserRole = dispenser.PAUSER_ROLE();
+
+        // ACT: admin grants `PAUSER_ROLE` and the pauser pauses.
+        vm.prank(ADMIN);
+        dispenser.grantRole(pauserRole, pauser);
+
+        vm.prank(pauser);
+        dispenser.pause();
+
+        // ASSERT: the pauser cannot unpause.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, pauser, dispenser.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(pauser);
+        dispenser.unpause();
+    }
+
+    function test_Unpause_RestoresRequestFunds() public {
+        vm.prank(ADMIN);
+        dispenser.pause();
+
+        // ACT: admin unpauses.
+        vm.expectEmit();
+        emit Pausable.Unpaused(ADMIN);
+        vm.prank(ADMIN);
+        dispenser.unpause();
+
+        // ASSERT: funds requests work again.
+        _requestFunds(REGISTERED_USER);
+    }
+
+    function test_Withdraw_WorksWhilePaused() public {
+        address to = makeAddr("treasury");
+
+        vm.prank(ADMIN);
+        dispenser.pause();
+
+        // ACT: admin withdraws while paused.
+        vm.prank(ADMIN);
+        dispenser.withdraw(to, 1e17);
+
+        // ASSERT: the funds arrived.
+        assertEq(to.balance, 1e17);
     }
 
     // TODO: add cooldown test here.

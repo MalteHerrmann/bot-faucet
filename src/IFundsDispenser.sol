@@ -130,6 +130,16 @@ interface IFundsDispenser {
     function removeRequester(address requester) external;
 
     /**
+     * @notice Pauses funds requests. Only accounts with `PAUSER_ROLE` can call this.
+     */
+    function pause() external;
+
+    /**
+     * @notice Resumes funds requests. Only the default admin can call this.
+     */
+    function unpause() external;
+
+    /**
      * @notice Withdraws native tokens from the contract. Only the default admin can call this.
      * @param to The account that receives the tokens.
      * @param amount The amount to withdraw.

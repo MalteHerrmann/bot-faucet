@@ -4,6 +4,7 @@ pragma solidity 0.8.34;
 import {
     AccessControlDefaultAdminRules
 } from "@openzeppelin/contracts/access/extensions/AccessControlDefaultAdminRules.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {IFundsDispenser} from "./IFundsDispenser.sol";
@@ -18,13 +19,16 @@ import {IFundsDispenser} from "./IFundsDispenser.sol";
  * @dev TODO: create ERC-7201 storage pattern
  * @dev TODO: add lastClaimed and a cooldown period to avoid potential exploits
  */
-contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, ReentrancyGuard {
+contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Pausable, ReentrancyGuard {
     // ---------------------------------------------------------------------------
     //                                 STATE
     // ---------------------------------------------------------------------------
 
     /// The initial delay for a default admin transfer.
     uint48 public constant INITIAL_ADMIN_DELAY = 1 days;
+
+    /// The role that can pause funds requests.
+    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
     /// The map of approved funds request configs per address.
     mapping(address => FundsRequestConfig) internal _approvedRequestConfigs;
@@ -42,9 +46,11 @@ contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Reen
     /**
      * @notice Constructs a new instance of the contract.
      * @param admin The address holding `DEFAULT_ADMIN_ROLE`. The admin can register
-     *              and remove funds requesters.
+     *              and remove funds requesters. The admin also receives `PAUSER_ROLE`.
      */
-    constructor(address admin) AccessControlDefaultAdminRules(INITIAL_ADMIN_DELAY, admin) {}
+    constructor(address admin) AccessControlDefaultAdminRules(INITIAL_ADMIN_DELAY, admin) {
+        _grantRole(PAUSER_ROLE, admin);
+    }
 
     // ---------------------------------------------------------------------------
     //                              EXTERNAL FUNCTIONS
@@ -60,7 +66,7 @@ contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Reen
     /**
      * @inheritdoc IFundsDispenser
      */
-    function requestFunds() external nonReentrant {
+    function requestFunds() external nonReentrant whenNotPaused {
         address requester = msg.sender;
         if (_registrationUpdatedAt[requester] == 0) {
             revert NotRegistered(requester);
@@ -121,6 +127,20 @@ contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Reen
         delete _registrationUpdatedAt[requester];
 
         emit RegistrationRemoved(requester);
+    }
+
+    /**
+     * @inheritdoc IFundsDispenser
+     */
+    function pause() external onlyRole(PAUSER_ROLE) {
+        _pause();
+    }
+
+    /**
+     * @inheritdoc IFundsDispenser
+     */
+    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _unpause();
     }
 
     /**
