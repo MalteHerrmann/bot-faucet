@@ -87,12 +87,14 @@ contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Paus
 
         emit FundsDistributed(requester, config.amount);
 
+        // slither-disable-start arbitrary-send-eth
         // Only registered requesters can receive funds.
         // forge-lint: disable-next-line(arbitrary-send-eth)
         (bool sent,) = requester.call{value: config.amount}("");
         if (!sent) {
             revert FailedToSend(requester, config.amount);
         }
+        // slither-disable-end arbitrary-send-eth
     }
 
     /**
@@ -156,12 +158,14 @@ contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Paus
 
         emit Withdrawn(to, amount);
 
+        // slither-disable-start arbitrary-send-eth
         // Only the admin can set the destination.
         // forge-lint: disable-next-line(arbitrary-send-eth)
         (bool sent,) = to.call{value: amount}("");
         if (!sent) {
             revert FailedToSend(to, amount);
         }
+        // slither-disable-end arbitrary-send-eth
     }
 
     // ---------------------------------------------------------------------------
@@ -226,7 +230,8 @@ contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Paus
      * @param n The number of epochs to increase.
      */
     function _updateEpoch(address requester, uint256 n) internal {
-        // no-op in case 0 is passed.
+        // No-op when no epoch has passed. n is a count, not a balance.
+        // slither-disable-next-line incorrect-equality
         if (n == 0) return;
 
         PayoutInfo storage updatedPayoutInfo = _payoutInfo[requester];

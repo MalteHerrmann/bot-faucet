@@ -69,3 +69,34 @@ jobs:
         with:
           name: coverage-lcov
           path: lcov.info
+
+  slither:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    env:
+      # Slither compiles with the default profile, the same as a local run.
+      FOUNDRY_PROFILE: default
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
+        with:
+          version: v1.8.6
+
+      - name: Install Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      # Same Slither version as the local dry run. Foundry and solc come from the pinned steps above.
+      - name: Run Slither
+        run: |
+          pip install slither-analyzer==0.11.6
+          slither . --config-file slither.config.json
