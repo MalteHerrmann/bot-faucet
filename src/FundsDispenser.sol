@@ -123,6 +123,24 @@ contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Reen
         emit RegistrationRemoved(requester);
     }
 
+    /**
+     * @inheritdoc IFundsDispenser
+     */
+    function withdraw(address to, uint256 amount) external nonReentrant onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (to == address(0)) {
+            revert EmptyAddress();
+        }
+
+        emit Withdrawn(to, amount);
+
+        // Only the admin can set the destination.
+        // forge-lint: disable-next-line(arbitrary-send-eth)
+        (bool sent,) = to.call{value: amount}("");
+        if (!sent) {
+            revert FailedToSend(to, amount);
+        }
+    }
+
     // ---------------------------------------------------------------------------
     //                               INTERNAL FUNCTIONS
     // ---------------------------------------------------------------------------

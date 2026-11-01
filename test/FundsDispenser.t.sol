@@ -11,6 +11,7 @@ import {
 
 import {FundsDispenserHarness} from "./FundsDispenserHarness.sol";
 import {ReentrantRequester} from "./mocks/ReentrantRequester.sol";
+import {RejectingReceiver} from "./mocks/RejectingReceiver.sol";
 import {IFundsDispenser} from "../src/IFundsDispenser.sol";
 
 contract FundsDispenserTest is Test {
@@ -277,6 +278,62 @@ contract FundsDispenserTest is Test {
 
         assertFalse(ok);
         assertEq(address(dispenser).balance, balancePre);
+    }
+
+    function test_Withdraw_Success() public {
+        address to = makeAddr("treasury");
+
+        uint256 dispenserBalancePre = address(dispenser).balance;
+        uint256 toBalancePre = to.balance;
+
+        // ACT: admin withdraws.
+        vm.expectEmit();
+        emit IFundsDispenser.Withdrawn(to, 5e17);
+        vm.prank(ADMIN);
+        dispenser.withdraw(to, 5e17);
+
+        // ASSERT: balances moved by exactly the amount.
+        assertEq(address(dispenser).balance, dispenserBalancePre - 5e17);
+        assertEq(to.balance, toBalancePre + 5e17);
+    }
+
+    function test_Withdraw_FailsForNonAdmin() public {
+        // ASSERT: non-admin cannot withdraw.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                REGISTERED_USER,
+                dispenser.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(REGISTERED_USER);
+        dispenser.withdraw(REGISTERED_USER, 1);
+    }
+
+    function test_Withdraw_RevertsOnZeroAddress() public {
+        // ASSERT: zero address is rejected.
+        vm.expectRevert(IFundsDispenser.EmptyAddress.selector);
+        vm.prank(ADMIN);
+        dispenser.withdraw(address(0), 1);
+    }
+
+    function test_Withdraw_RevertsOnInsufficientBalance() public {
+        address to = makeAddr("treasury");
+        uint256 amount = address(dispenser).balance + 1;
+
+        // ASSERT: withdrawing more than the balance reverts.
+        vm.expectRevert(abi.encodeWithSelector(IFundsDispenser.FailedToSend.selector, to, amount));
+        vm.prank(ADMIN);
+        dispenser.withdraw(to, amount);
+    }
+
+    function test_Withdraw_RevertsOnRejectingReceiver() public {
+        RejectingReceiver receiver = new RejectingReceiver();
+
+        // ASSERT: a receiver that rejects native tokens reverts the withdrawal.
+        vm.expectRevert(abi.encodeWithSelector(IFundsDispenser.FailedToSend.selector, address(receiver), 1));
+        vm.prank(ADMIN);
+        dispenser.withdraw(address(receiver), 1);
     }
 
     // TODO: add cooldown test here.

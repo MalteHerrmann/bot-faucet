@@ -54,10 +54,10 @@ interface IFundsDispenser {
 
     /**
      * @notice Thrown when sending funds has failed.
-     * @param requester The address requesting funds.
+     * @param receiver The address that should have received the funds.
      * @param amount The amount attempted to be sent.
      */
-    error FailedToSend(address requester, uint256 amount);
+    error FailedToSend(address receiver, uint256 amount);
 
     /**
      * @notice Thrown if an invalid configuration is registered.
@@ -104,6 +104,13 @@ interface IFundsDispenser {
     event RegistrationRemoved(address indexed requester);
 
     /**
+     * @notice Emitted when the admin withdraws native tokens.
+     * @param to The account that received the tokens.
+     * @param amount The amount withdrawn.
+     */
+    event Withdrawn(address indexed to, uint256 amount);
+
+    /**
      * @notice Request funds from the contract. The sender has to be registered in the contract.
      */
     function requestFunds() external;
@@ -121,4 +128,11 @@ interface IFundsDispenser {
      * @param requester The address of the account to be removed.
      */
     function removeRequester(address requester) external;
+
+    /**
+     * @notice Withdraws native tokens from the contract. Only the default admin can call this.
+     * @param to The account that receives the tokens.
+     * @param amount The amount to withdraw.
+     */
+    function withdraw(address to, uint256 amount) external;
 }
