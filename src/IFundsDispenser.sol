@@ -77,9 +77,6 @@ interface IFundsDispenser {
      */
     error LimitReached(address requester, uint256 limit);
 
-    /// @notice Thrown if a gated function is called by an unauthorized account.
-    error Unauthorized();
-
     /**
      * @notice Emitted when native tokens are sent to the contract.
      * @param funder The account that sent the tokens.

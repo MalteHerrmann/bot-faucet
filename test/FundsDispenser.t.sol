@@ -4,6 +4,11 @@ pragma solidity 0.8.34;
 import {console} from "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {
+    IAccessControlDefaultAdminRules
+} from "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
+
 import {FundsDispenserHarness} from "./FundsDispenserHarness.sol";
 import {ReentrantRequester} from "./mocks/ReentrantRequester.sol";
 import {IFundsDispenser} from "../src/IFundsDispenser.sol";
@@ -30,12 +35,63 @@ contract FundsDispenserTest is Test {
         dispenser.registerConfig(REGISTERED_USER, registeredConfig);
     }
 
+    function test_Constructor_RevertsOnZeroAdmin() public {
+        // ASSERT: zero admin is rejected.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControlDefaultAdminRules.AccessControlInvalidDefaultAdmin.selector, address(0)
+            )
+        );
+        new FundsDispenserHarness(address(0));
+    }
+
+    function test_AdminTransfer_TwoStep() public {
+        address newAdmin = makeAddr("newAdmin");
+
+        // ACT: begin the transfer.
+        vm.prank(ADMIN);
+        dispenser.beginDefaultAdminTransfer(newAdmin);
+
+        // ASSERT: the new admin cannot accept before the delay has passed.
+        vm.expectPartialRevert(IAccessControlDefaultAdminRules.AccessControlEnforcedDefaultAdminDelay.selector);
+        vm.prank(newAdmin);
+        dispenser.acceptDefaultAdminTransfer();
+
+        // ACT: accept the transfer after the delay.
+        vm.warp(vm.getBlockTimestamp() + dispenser.INITIAL_ADMIN_DELAY() + 1);
+        vm.prank(newAdmin);
+        dispenser.acceptDefaultAdminTransfer();
+
+        // ASSERT: the admin role has moved to the new admin.
+        assertEq(dispenser.defaultAdmin(), newAdmin);
+        assertTrue(dispenser.hasRole(dispenser.DEFAULT_ADMIN_ROLE(), newAdmin));
+        assertFalse(dispenser.hasRole(dispenser.DEFAULT_ADMIN_ROLE(), ADMIN));
+
+        // ASSERT: the old admin cannot register anymore.
+        IFundsDispenser.FundsRequestConfig memory config =
+            dispenser.newFundsRequestConfig(2e15, DAYS_1, 3e17, WEEKS_4, 1e15);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, ADMIN, dispenser.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(ADMIN);
+        dispenser.registerConfig(REGISTERED_USER, config);
+    }
+
     function test_RegisterUser_FailsForNonAdmin() public {
         IFundsDispenser.FundsRequestConfig memory bobConfig =
             dispenser.newFundsRequestConfig(2e15, DAYS_1, 3e17, WEEKS_4, 1e15);
 
         // ASSERT: non-admin cannot register.
-        vm.expectRevert(IFundsDispenser.Unauthorized.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                REGISTERED_USER,
+                dispenser.DEFAULT_ADMIN_ROLE()
+            )
+        );
         vm.prank(REGISTERED_USER);
         dispenser.registerConfig(REGISTERED_USER, bobConfig);
     }
@@ -77,7 +133,13 @@ contract FundsDispenserTest is Test {
 
     function test_RemoveRequester_FailsForNonAdmin() public {
         // ASSERT: non-admin cannot remove.
-        vm.expectRevert(IFundsDispenser.Unauthorized.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                REGISTERED_USER,
+                dispenser.DEFAULT_ADMIN_ROLE()
+            )
+        );
         vm.prank(REGISTERED_USER);
         dispenser.removeRequester(REGISTERED_USER);
     }

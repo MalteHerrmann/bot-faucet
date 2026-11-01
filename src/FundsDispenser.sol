@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.34;
 
+import {
+    AccessControlDefaultAdminRules
+} from "@openzeppelin/contracts/access/extensions/AccessControlDefaultAdminRules.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {IFundsDispenser} from "./IFundsDispenser.sol";
@@ -15,13 +18,13 @@ import {IFundsDispenser} from "./IFundsDispenser.sol";
  * @dev TODO: create ERC-7201 storage pattern
  * @dev TODO: add lastClaimed and a cooldown period to avoid potential exploits
  */
-contract FundsDispenser is IFundsDispenser, ReentrancyGuard {
+contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, ReentrancyGuard {
     // ---------------------------------------------------------------------------
     //                                 STATE
     // ---------------------------------------------------------------------------
 
-    /// The contract's admin.
-    address private _admin;
+    /// The initial delay for a default admin transfer.
+    uint48 public constant INITIAL_ADMIN_DELAY = 1 days;
 
     /// The map of approved funds request configs per address.
     mapping(address => FundsRequestConfig) internal _approvedRequestConfigs;
@@ -38,30 +41,10 @@ contract FundsDispenser is IFundsDispenser, ReentrancyGuard {
 
     /**
      * @notice Constructs a new instance of the contract.
-     * @param admin The address of the admin authority, able to register,
-     *                 and de-register funds requesters.
+     * @param admin The address holding `DEFAULT_ADMIN_ROLE`. The admin can register
+     *              and remove funds requesters.
      */
-    constructor(address admin) {
-        if (admin == address(0)) {
-            revert EmptyAddress();
-        }
-
-        _admin = admin;
-    }
-
-    // ---------------------------------------------------------------------------
-    //                                 MODIFIER
-    // ---------------------------------------------------------------------------
-
-    /**
-     * @notice Ensures admin authority for safety related features.
-     */
-    modifier onlyAdmin() {
-        if (msg.sender != _admin) {
-            revert Unauthorized();
-        }
-        _;
-    }
+    constructor(address admin) AccessControlDefaultAdminRules(INITIAL_ADMIN_DELAY, admin) {}
 
     // ---------------------------------------------------------------------------
     //                              EXTERNAL FUNCTIONS
@@ -106,7 +89,10 @@ contract FundsDispenser is IFundsDispenser, ReentrancyGuard {
     /**
      * @inheritdoc IFundsDispenser
      */
-    function registerConfig(address requester, FundsRequestConfig calldata config) external onlyAdmin {
+    function registerConfig(address requester, FundsRequestConfig calldata config)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         if (requester == address(0)) {
             revert EmptyAddress();
         }
@@ -125,7 +111,7 @@ contract FundsDispenser is IFundsDispenser, ReentrancyGuard {
     /**
      * @inheritdoc IFundsDispenser
      */
-    function removeRequester(address requester) external onlyAdmin {
+    function removeRequester(address requester) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (_registrationUpdatedAt[requester] == 0) {
             revert NotRegistered(requester);
         }
