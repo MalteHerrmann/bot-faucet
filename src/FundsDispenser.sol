@@ -68,6 +68,13 @@ contract FundsDispenser is IFundsDispenser, ReentrancyGuard {
     // ---------------------------------------------------------------------------
 
     /**
+     * @notice Accepts native tokens to fund the dispenser.
+     */
+    receive() external payable {
+        emit Funded(msg.sender, msg.value);
+    }
+
+    /**
      * @inheritdoc IFundsDispenser
      */
     function requestFunds() external nonReentrant {

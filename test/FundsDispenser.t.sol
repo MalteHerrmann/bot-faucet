@@ -185,6 +185,38 @@ contract FundsDispenserTest is Test {
         assertEq(sink.balance, 0);
     }
 
+    function test_Receive_AcceptsFunds() public {
+        address funder = makeAddr("funder");
+        vm.deal(funder, 1 ether);
+
+        uint256 balancePre = address(dispenser).balance;
+
+        // ASSERT: plain transfers emit the event.
+        vm.expectEmit();
+        emit IFundsDispenser.Funded(funder, 1 ether);
+
+        vm.prank(funder);
+        (bool ok,) = address(dispenser).call{value: 1 ether}("");
+
+        // ASSERT: transfer succeeds and balance increases.
+        assertTrue(ok);
+        assertEq(address(dispenser).balance, balancePre + 1 ether);
+    }
+
+    function test_Fallback_Reverts() public {
+        address funder = makeAddr("funder");
+        vm.deal(funder, 1 ether);
+
+        uint256 balancePre = address(dispenser).balance;
+
+        // ASSERT: calls with data revert, as there is no fallback.
+        vm.prank(funder);
+        (bool ok,) = address(dispenser).call{value: 1 ether}(hex"deadbeef");
+
+        assertFalse(ok);
+        assertEq(address(dispenser).balance, balancePre);
+    }
+
     // TODO: add cooldown test here.
 
     // -------------------------------------------------------

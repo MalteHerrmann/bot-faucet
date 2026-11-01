@@ -81,6 +81,13 @@ interface IFundsDispenser {
     error Unauthorized();
 
     /**
+     * @notice Emitted when native tokens are sent to the contract.
+     * @param funder The account that sent the tokens.
+     * @param amount The amount received.
+     */
+    event Funded(address indexed funder, uint256 amount);
+
+    /**
      * @notice Emitted when a funds request was served.
      * @param requester The account receiving the funds.
      * @param amount The amount of tokens distributed.
