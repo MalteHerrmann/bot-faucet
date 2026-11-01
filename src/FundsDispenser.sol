@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.34;
 
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
 import {IFundsDispenser} from "./IFundsDispenser.sol";
 
 /**
@@ -13,7 +15,7 @@ import {IFundsDispenser} from "./IFundsDispenser.sol";
  * @dev TODO: create ERC-7201 storage pattern
  * @dev TODO: add lastClaimed and a cooldown period to avoid potential exploits
  */
-contract FundsDispenser is IFundsDispenser {
+contract FundsDispenser is IFundsDispenser, ReentrancyGuard {
     // ---------------------------------------------------------------------------
     //                                 STATE
     // ---------------------------------------------------------------------------
@@ -68,7 +70,7 @@ contract FundsDispenser is IFundsDispenser {
     /**
      * @inheritdoc IFundsDispenser
      */
-    function requestFunds() external {
+    function requestFunds() external nonReentrant {
         address requester = msg.sender;
         if (_registrationUpdatedAt[requester] == 0) {
             revert NotRegistered(requester);
@@ -84,14 +86,14 @@ contract FundsDispenser is IFundsDispenser {
 
         _validateRequest(requester, config);
 
+        _updateRequestsMade(requester, config.amount);
+
+        emit FundsDistributed(requester, config.amount);
+
         (bool sent,) = requester.call{value: config.amount}("");
         if (!sent) {
             revert FailedToSend(requester, config.amount);
         }
-
-        _updateRequestsMade(requester, config.amount);
-
-        emit FundsDistributed(requester, config.amount);
     }
 
     /**

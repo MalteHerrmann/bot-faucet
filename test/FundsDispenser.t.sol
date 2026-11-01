@@ -5,6 +5,7 @@ import {console} from "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 
 import {FundsDispenserHarness} from "./FundsDispenserHarness.sol";
+import {ReentrantRequester} from "./mocks/ReentrantRequester.sol";
 import {IFundsDispenser} from "../src/IFundsDispenser.sol";
 
 contract FundsDispenserTest is Test {
@@ -118,6 +119,28 @@ contract FundsDispenserTest is Test {
         assertEq(payoutInfoPostEpoch.amount, config.amount); // after the epoch the amount should be reset to zero and then only show the one requested amount.
         assertEq(payoutInfoPostEpoch.lastPayout, block.timestamp);
         assertEq(payoutInfoPostEpoch.epoch, 2); // check that the epoch was bumped and not only incremented.
+    }
+
+    function test_RequestFunds_RevertsOnReentrancy() public {
+        address sink = makeAddr("sink");
+        ReentrantRequester attacker = new ReentrantRequester(dispenser, sink);
+
+        // ACT: register the mock as a requester.
+        IFundsDispenser.FundsRequestConfig memory attackerConfig =
+            dispenser.newFundsRequestConfig(2e15, DAYS_1, 3e17, WEEKS_4, 1e15);
+
+        vm.prank(ADMIN);
+        dispenser.registerConfig(address(attacker), attackerConfig);
+
+        uint256 dispenserBalancePre = address(dispenser).balance;
+
+        // ASSERT: the inner request reverts, so the outer payout fails.
+        vm.expectRevert(abi.encodeWithSelector(IFundsDispenser.FailedToSend.selector, address(attacker), 2e15));
+        attacker.attack();
+
+        // ASSERT: no funds have left the dispenser.
+        assertEq(address(dispenser).balance, dispenserBalancePre);
+        assertEq(sink.balance, 0);
     }
 
     // TODO: add cooldown test here.
