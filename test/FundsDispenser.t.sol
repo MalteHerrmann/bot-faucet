@@ -552,6 +552,59 @@ contract FundsDispenserTest is Test {
         _requestFunds(REGISTERED_USER);
     }
 
+    function testFuzz_RegisterConfig_StoresValidConfig(
+        uint256 amount,
+        uint256 cooldown,
+        uint256 granted,
+        uint256 epochDuration,
+        uint256 threshold
+    ) public {
+        // ARRANGE: bound the inputs to a valid config.
+        epochDuration = bound(epochDuration, 2, 365 days);
+        cooldown = bound(cooldown, 0, epochDuration - 1);
+        granted = bound(granted, 1, 1e24);
+        amount = bound(amount, 1, granted);
+        threshold = bound(threshold, 1, 1e24);
+
+        IFundsDispenser.FundsRequestConfig memory config =
+            IFundsDispenser.FundsRequestConfig(amount, cooldown, granted, epochDuration, threshold);
+        assertTrue(dispenser.validateConfig(config));
+
+        // ACT: admin registers the config.
+        address user = makeAddr("fuzzUser");
+        vm.prank(ADMIN);
+        dispenser.registerConfig(user, config);
+
+        // ASSERT: the stored config equals the input.
+        IFundsDispenser.FundsRequestConfig memory stored = dispenser.getFundsRequestConfig(user);
+        assertEq(stored.amount, amount);
+        assertEq(stored.cooldown, cooldown);
+        assertEq(stored.grantedFundsPerEpoch, granted);
+        assertEq(stored.epochDuration, epochDuration);
+        assertEq(stored.thresholdBalance, threshold);
+    }
+
+    function testFuzz_RequestFunds_Cooldown(uint256 elapsed) public {
+        _requestFunds(REGISTERED_USER);
+
+        // ACT: the bot spends its funds, then time passes inside the first epoch.
+        vm.deal(REGISTERED_USER, 0);
+        elapsed = bound(elapsed, 0, WEEKS_4 - DAYS_1 - 1);
+        vm.warp(vm.getBlockTimestamp() + elapsed);
+
+        if (elapsed < DAYS_1) {
+            // ASSERT: a request inside the cooldown is rejected.
+            vm.expectRevert(
+                abi.encodeWithSelector(IFundsDispenser.CooldownNotElapsed.selector, REGISTERED_USER, DAYS_1, elapsed)
+            );
+            vm.prank(REGISTERED_USER);
+            dispenser.requestFunds(REGISTERED_USER);
+        } else {
+            // ASSERT: a request after the cooldown succeeds.
+            _requestFunds(REGISTERED_USER);
+        }
+    }
+
     // -------------------------------------------------------
     //                        HELPERS
     // -------------------------------------------------------
