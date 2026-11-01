@@ -1,35 +1,71 @@
 name: CI
 
+# No default token permissions. Each job asks for what it needs.
 permissions: {}
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
+# Cancel older runs of the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Use the ci profile from foundry.toml.
+  FOUNDRY_PROFILE: ci
+
 jobs:
-  check:
-    name: Foundry project
+  test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      # Actions are pinned to commit SHAs. Foundry is pinned to an exact version.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           submodules: recursive
 
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
+        with:
+          version: v1.8.6
 
       - name: Show Forge version
         run: forge --version
 
-      - name: Run Forge fmt
+      - name: Format
         run: forge fmt --check
 
-      - name: Run Forge build
+      # Fail on any lint warning (high, medium, low severity).
+      - name: Lint
+        run: forge lint --deny warnings
+
+      - name: Build
         run: forge build --sizes
 
-      - name: Run Forge tests
+      - name: Test
         run: forge test -vvv
+
+      - name: Coverage gate
+        shell: bash
+        run: |
+          forge coverage --no-match-coverage "(test|script|lib)/" --report summary --report lcov --report-file lcov.info > coverage.txt
+          cat coverage.txt
+          # A missing table means coverage did not run. Fail instead of passing silently.
+          grep -q '^| src/' coverage.txt
+          # Fail when any src row is below 100% on lines, statements, branches or functions.
+          awk -F'|' '/^\| src\//{ for (i = 3; i <= 6; i++) if ($i !~ /100\.00%/) bad = 1 } END { exit bad }' coverage.txt
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-lcov
+          path: lcov.info

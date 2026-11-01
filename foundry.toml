@@ -13,3 +13,14 @@ optimizer_runs = 200
 runs = 256
 depth = 100
 fail_on_revert = true
+
+[profile.ci]
+deny = "warnings"
+
+[profile.ci.fuzz]
+runs = 5000
+
+[profile.ci.invariant]
+runs = 1024
+depth = 100
+fail_on_revert = true
