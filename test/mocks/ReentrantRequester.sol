@@ -18,7 +18,7 @@ contract ReentrantRequester {
     }
 
     function attack() external {
-        dispenser.requestFunds();
+        dispenser.requestFunds(address(this));
     }
 
     // Forward the payout to the sink, then re-enter once.
@@ -29,6 +29,6 @@ contract ReentrantRequester {
 
         if (_reentered) return;
         _reentered = true;
-        dispenser.requestFunds();
+        dispenser.requestFunds(address(this));
     }
 }

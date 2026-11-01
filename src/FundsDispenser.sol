@@ -66,8 +66,9 @@ contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Paus
     /**
      * @inheritdoc IFundsDispenser
      */
-    function requestFunds() external nonReentrant whenNotPaused {
-        address requester = msg.sender;
+    // The registration check rejects the zero address.
+    // forge-lint: disable-next-item(missing-zero-check)
+    function requestFunds(address requester) external nonReentrant whenNotPaused {
         if (_registrationUpdatedAt[requester] == 0) {
             revert NotRegistered(requester);
         }
@@ -86,6 +87,8 @@ contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Paus
 
         emit FundsDistributed(requester, config.amount);
 
+        // Only registered requesters can receive funds.
+        // forge-lint: disable-next-line(arbitrary-send-eth)
         (bool sent,) = requester.call{value: config.amount}("");
         if (!sent) {
             revert FailedToSend(requester, config.amount);

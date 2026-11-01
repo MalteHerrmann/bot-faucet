@@ -175,7 +175,7 @@ contract FundsDispenserTest is Test {
         // ASSERT: unregistered account should revert
         vm.expectRevert(abi.encodeWithSelector(IFundsDispenser.NotRegistered.selector, NOT_REGISTERED_USER));
         vm.prank(NOT_REGISTERED_USER);
-        dispenser.requestFunds();
+        dispenser.requestFunds(NOT_REGISTERED_USER);
     }
 
     function test_RequestFunds_Fail_AfterRemoval() public {
@@ -185,12 +185,30 @@ contract FundsDispenserTest is Test {
         // ASSERT: removed account should revert with NotRegistered.
         vm.expectRevert(abi.encodeWithSelector(IFundsDispenser.NotRegistered.selector, REGISTERED_USER));
         vm.prank(REGISTERED_USER);
-        dispenser.requestFunds();
+        dispenser.requestFunds(REGISTERED_USER);
     }
 
     function test_RequestFunds_Success() public {
         // ASSERT: registered accounts can request funds
         _requestFunds(REGISTERED_USER);
+    }
+
+    function test_RequestFunds_ByThirdParty() public {
+        uint256 requesterBalancePre = REGISTERED_USER.balance;
+        uint256 callerBalancePre = NOT_REGISTERED_USER.balance;
+
+        IFundsDispenser.FundsRequestConfig memory config = dispenser.getFundsRequestConfig(REGISTERED_USER);
+
+        // ACT: a third party requests funds for the registered account.
+        vm.expectEmit();
+        emit IFundsDispenser.FundsDistributed(REGISTERED_USER, config.amount);
+        vm.prank(NOT_REGISTERED_USER);
+        dispenser.requestFunds(REGISTERED_USER);
+
+        // ASSERT: funds go to the requester, not to the caller.
+        assertEq(REGISTERED_USER.balance, requesterBalancePre + config.amount);
+        assertEq(NOT_REGISTERED_USER.balance, callerBalancePre);
+        assertEq(dispenser.getPayoutInfo(REGISTERED_USER).lastPayout, block.timestamp);
     }
 
     function test_RequestFunds_ResetsAfterInterval() public {
@@ -212,7 +230,7 @@ contract FundsDispenserTest is Test {
             abi.encodeWithSelector(IFundsDispenser.LimitReached.selector, REGISTERED_USER, config.grantedFundsPerEpoch)
         );
         vm.prank(REGISTERED_USER);
-        dispenser.requestFunds();
+        dispenser.requestFunds(REGISTERED_USER);
 
         // ASSERT: after epoch end it should be possible to request funds again. We're testing multiple epochs passing here.
         uint256 timestampAfterInterval = vm.getBlockTimestamp() + 2 * config.epochDuration;
@@ -347,7 +365,7 @@ contract FundsDispenserTest is Test {
         // ASSERT: funds requests revert while paused.
         vm.expectRevert(Pausable.EnforcedPause.selector);
         vm.prank(REGISTERED_USER);
-        dispenser.requestFunds();
+        dispenser.requestFunds(REGISTERED_USER);
     }
 
     function test_Pause_FailsWithoutRole() public {
@@ -425,7 +443,7 @@ contract FundsDispenserTest is Test {
         emit IFundsDispenser.FundsDistributed(sender, senderConfig.amount);
 
         vm.prank(sender);
-        dispenser.requestFunds();
+        dispenser.requestFunds(sender);
 
         // ASSERT: balance has changed
         assert(sender.balance == balancePre + senderConfig.amount);

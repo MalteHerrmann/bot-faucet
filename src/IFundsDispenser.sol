@@ -111,9 +111,12 @@ interface IFundsDispenser {
     event Withdrawn(address indexed to, uint256 amount);
 
     /**
-     * @notice Request funds from the contract. The sender has to be registered in the contract.
+     * @notice Requests funds for a registered account. Anyone can call this.
+     * @dev Funds always go to `requester`. All limits apply to `requester`, not to the caller.
+     *      This lets a keeper top up a bot that has no gas left.
+     * @param requester The registered account that receives the funds.
      */
-    function requestFunds() external;
+    function requestFunds(address requester) external;
 
     /**
      * @notice Registers or updates an account that can request funds.
