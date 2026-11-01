@@ -15,9 +15,6 @@ import {IFundsDispenser} from "./IFundsDispenser.sol";
  * @notice This contract is intended to provide known bot accounts with recurring funding
  *         for them to operate normally without having to hold large quantities of funds,
  *         while keeping operational burdens low for the Engineering team.
- * @dev TODO: move behind proxy?
- * @dev TODO: create ERC-7201 storage pattern
- * @dev TODO: add lastClaimed and a cooldown period to avoid potential exploits
  */
 contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Pausable, ReentrancyGuard {
     // ---------------------------------------------------------------------------
@@ -76,7 +73,6 @@ contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Paus
         FundsRequestConfig memory config = _approvedRequestConfigs[requester];
         PayoutInfo memory payoutInfo = _payoutInfo[requester];
 
-        // TODO: use SafeMath here?
         // The epoch update has to happen first to reset the limits before validating the request.
         uint256 currentEpoch = (block.timestamp - _registrationUpdatedAt[requester]) / config.epochDuration;
         _updateEpoch(requester, currentEpoch - payoutInfo.epoch);
@@ -237,8 +233,6 @@ contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Paus
         PayoutInfo storage updatedPayoutInfo = _payoutInfo[requester];
         updatedPayoutInfo.amount = 0;
         updatedPayoutInfo.epoch += n;
-
-        // TODO: emit Epoch event?
     }
 
     /**

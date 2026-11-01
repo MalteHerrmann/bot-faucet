@@ -5,7 +5,6 @@ interface IFundsDispenser {
     /**
      * @notice The configuration for a given requesting account.
      */
-    // TODO:  move to ERC-7201 storage
     struct FundsRequestConfig {
         /// The amount of native tokens sent upon a successful request.
         uint256 amount;
@@ -26,7 +25,6 @@ interface IFundsDispenser {
         /// The amount of funds paid during this interval.
         uint256 amount;
         /// The current epoch since the time of registration.
-        /// TODO: convert to uint64 by using SafeMath.
         uint256 epoch;
         /// The timestamp of the last fulfilled request.
         uint256 lastPayout;
