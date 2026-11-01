@@ -123,7 +123,7 @@ contract FundsDispenserTest is Test {
 
         // ASSERT: admin can register.
         vm.expectEmit();
-        emit IFundsDispenser.RegistrationUpdated(newUser);
+        emit IFundsDispenser.RegistrationUpdated(newUser, newConfig);
         vm.prank(ADMIN);
         dispenser.registerConfig(newUser, newConfig);
 

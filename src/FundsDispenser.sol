@@ -114,7 +114,7 @@ contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Paus
         _payoutInfo[requester] = PayoutInfo(0, 0, 0);
         _registrationUpdatedAt[requester] = block.timestamp;
 
-        emit RegistrationUpdated(requester);
+        emit RegistrationUpdated(requester, config);
     }
 
     /**

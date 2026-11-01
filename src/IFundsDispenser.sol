@@ -94,8 +94,9 @@ interface IFundsDispenser {
     /**
      * @notice Emitted when a funds request config is added or updated.
      * @param requester The address whose request config has been updated.
+     * @param config The new configuration.
      */
-    event RegistrationUpdated(address indexed requester);
+    event RegistrationUpdated(address indexed requester, FundsRequestConfig config);
 
     /**
      * @notice Emitted when a funds request config is removed.
