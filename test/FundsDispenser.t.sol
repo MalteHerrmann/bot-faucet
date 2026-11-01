@@ -133,6 +133,95 @@ contract FundsDispenserTest is Test {
         assertEq(dispenser.getRegistrationUpdatedAt(newUser), block.timestamp);
     }
 
+    function test_RegisterUser_RevertsOnZeroAddress() public {
+        IFundsDispenser.FundsRequestConfig memory config =
+            dispenser.newFundsRequestConfig(2e15, DAYS_1, 3e17, WEEKS_4, 1e15);
+
+        // ASSERT: zero address is rejected.
+        vm.expectRevert(IFundsDispenser.EmptyAddress.selector);
+        vm.prank(ADMIN);
+        dispenser.registerConfig(address(0), config);
+    }
+
+    function test_RegisterUser_InvalidConfig_ZeroAmount() public {
+        IFundsDispenser.FundsRequestConfig memory config =
+            IFundsDispenser.FundsRequestConfig(0, DAYS_1, 3e17, WEEKS_4, 1e15);
+
+        // ASSERT: the configuration is invalid and registration fails.
+        assertFalse(dispenser.validateConfig(config));
+
+        vm.expectRevert(IFundsDispenser.InvalidConfig.selector);
+        vm.prank(ADMIN);
+        dispenser.registerConfig(REGISTERED_USER, config);
+    }
+
+    function test_RegisterUser_InvalidConfig_AmountAboveEpochLimit() public {
+        IFundsDispenser.FundsRequestConfig memory config =
+            IFundsDispenser.FundsRequestConfig(3e17 + 1, DAYS_1, 3e17, WEEKS_4, 1e15);
+
+        // ASSERT: the configuration is invalid and registration fails.
+        assertFalse(dispenser.validateConfig(config));
+
+        vm.expectRevert(IFundsDispenser.InvalidConfig.selector);
+        vm.prank(ADMIN);
+        dispenser.registerConfig(REGISTERED_USER, config);
+    }
+
+    function test_RegisterUser_InvalidConfig_ZeroEpochDuration() public {
+        IFundsDispenser.FundsRequestConfig memory config = IFundsDispenser.FundsRequestConfig(2e15, 0, 3e17, 0, 1e15);
+
+        // ASSERT: the configuration is invalid and registration fails.
+        assertFalse(dispenser.validateConfig(config));
+
+        vm.expectRevert(IFundsDispenser.InvalidConfig.selector);
+        vm.prank(ADMIN);
+        dispenser.registerConfig(REGISTERED_USER, config);
+    }
+
+    function test_RegisterUser_InvalidConfig_CooldownNotBelowEpoch() public {
+        IFundsDispenser.FundsRequestConfig memory config =
+            IFundsDispenser.FundsRequestConfig(2e15, WEEKS_4, 3e17, WEEKS_4, 1e15);
+
+        // ASSERT: the configuration is invalid and registration fails.
+        assertFalse(dispenser.validateConfig(config));
+
+        vm.expectRevert(IFundsDispenser.InvalidConfig.selector);
+        vm.prank(ADMIN);
+        dispenser.registerConfig(REGISTERED_USER, config);
+    }
+
+    function test_RegisterUser_InvalidConfig_ZeroThreshold() public {
+        IFundsDispenser.FundsRequestConfig memory config =
+            IFundsDispenser.FundsRequestConfig(2e15, DAYS_1, 3e17, WEEKS_4, 0);
+
+        // ASSERT: the configuration is invalid and registration fails.
+        assertFalse(dispenser.validateConfig(config));
+
+        vm.expectRevert(IFundsDispenser.InvalidConfig.selector);
+        vm.prank(ADMIN);
+        dispenser.registerConfig(REGISTERED_USER, config);
+    }
+
+    function test_RegisterUser_ResetsPayoutInfo() public {
+        _requestFunds(REGISTERED_USER);
+        assertEq(dispenser.getPayoutInfo(REGISTERED_USER).amount, 2e15);
+
+        IFundsDispenser.FundsRequestConfig memory config =
+            dispenser.newFundsRequestConfig(2e15, DAYS_1, 3e17, WEEKS_4, 1e15);
+
+        // ACT: admin registers the same account again, one hour later.
+        vm.warp(vm.getBlockTimestamp() + 1 hours);
+        vm.prank(ADMIN);
+        dispenser.registerConfig(REGISTERED_USER, config);
+
+        // ASSERT: payout info is reset and the registration time is updated.
+        IFundsDispenser.PayoutInfo memory payoutInfo = dispenser.getPayoutInfo(REGISTERED_USER);
+        assertEq(payoutInfo.amount, 0);
+        assertEq(payoutInfo.epoch, 0);
+        assertEq(payoutInfo.lastPayout, 0);
+        assertEq(dispenser.getRegistrationUpdatedAt(REGISTERED_USER), vm.getBlockTimestamp());
+    }
+
     function test_RemoveRequester_FailsForNonAdmin() public {
         // ASSERT: non-admin cannot remove.
         vm.expectRevert(
@@ -428,7 +517,40 @@ contract FundsDispenserTest is Test {
         assertEq(to.balance, 1e17);
     }
 
-    // TODO: add cooldown test here.
+    function test_RequestFunds_Fail_BalanceTooHigh() public {
+        vm.deal(REGISTERED_USER, 1e15 + 1);
+
+        // ASSERT: a balance above the threshold is rejected.
+        vm.expectRevert(abi.encodeWithSelector(IFundsDispenser.BalanceTooHigh.selector, REGISTERED_USER, 1e15 + 1));
+        vm.prank(REGISTERED_USER);
+        dispenser.requestFunds(REGISTERED_USER);
+    }
+
+    function test_RequestFunds_Fail_CooldownNotElapsed() public {
+        _requestFunds(REGISTERED_USER);
+
+        // ACT: the bot spends its funds, then one second remains in the cooldown.
+        vm.deal(REGISTERED_USER, 0);
+        vm.warp(vm.getBlockTimestamp() + DAYS_1 - 1);
+
+        // ASSERT: a request inside the cooldown is rejected.
+        vm.expectRevert(
+            abi.encodeWithSelector(IFundsDispenser.CooldownNotElapsed.selector, REGISTERED_USER, DAYS_1, DAYS_1 - 1)
+        );
+        vm.prank(REGISTERED_USER);
+        dispenser.requestFunds(REGISTERED_USER);
+    }
+
+    function test_RequestFunds_SucceedsAtCooldownBoundary() public {
+        _requestFunds(REGISTERED_USER);
+
+        // ACT: the bot spends its funds, then the cooldown ends exactly now.
+        vm.deal(REGISTERED_USER, 0);
+        vm.warp(vm.getBlockTimestamp() + DAYS_1);
+
+        // ASSERT: a request at the cooldown boundary succeeds.
+        _requestFunds(REGISTERED_USER);
+    }
 
     // -------------------------------------------------------
     //                        HELPERS
@@ -449,6 +571,6 @@ contract FundsDispenserTest is Test {
         assert(sender.balance == balancePre + senderConfig.amount);
 
         // ASSERT: payout info should be updated with last claim (other values depend on external factors so we're not asserting them here).
-        assertEq(dispenser.getPayoutInfo(sender).lastPayout, block.timestamp);
+        assertEq(dispenser.getPayoutInfo(sender).lastPayout, vm.getBlockTimestamp());
     }
 }
