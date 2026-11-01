@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.34;
 
-import { FundsDispenser } from "../src/FundsDispenser.sol";
+import {FundsDispenser} from "../src/FundsDispenser.sol";
 
 /**
  * @notice The test harness providing some internal data access for ease of use.
@@ -42,13 +42,9 @@ contract FundsDispenserHarness is FundsDispenser {
         uint256 thresholdBalance
     ) external pure returns (FundsRequestConfig memory) {
         FundsRequestConfig memory config = FundsRequestConfig(
-            amount,
-            cooldown,
-            grantedFundsPerEpoch,
-            epochDuration,
-            thresholdBalance
+            amount, cooldown, grantedFundsPerEpoch, epochDuration, thresholdBalance
         );
-        if(!_validateConfig(config)) revert InvalidConfig();
+        if (!_validateConfig(config)) revert InvalidConfig();
         return config;
     }
 
