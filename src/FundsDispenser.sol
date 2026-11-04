@@ -21,8 +21,8 @@ contract FundsDispenser is IFundsDispenser, AccessControlDefaultAdminRules, Paus
     //                                 STATE
     // ---------------------------------------------------------------------------
 
-    /// The initial delay for a default admin transfer.
-    uint48 public constant INITIAL_ADMIN_DELAY = 1 days;
+    /// The initial delay for a default admin transfer. Zero keeps the transfer two-step.
+    uint48 public constant INITIAL_ADMIN_DELAY = 0;
 
     /// The role that can pause funds requests.
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");

@@ -53,9 +53,9 @@ The bot gets 0.002 tokens per request. It can request once per day. It can recei
 
 - The deployer passes the admin address to the constructor. The deployer gets no role.
 - The constructor also grants `PAUSER_ROLE` to the admin.
-- Admin transfer has two steps. The admin calls `beginDefaultAdminTransfer`. The new admin calls `acceptDefaultAdminTransfer` after the delay. The delay is 1 day (`INITIAL_ADMIN_DELAY`). The admin can change it with `changeDefaultAdminDelay`.
+- Admin transfer has two steps. The admin calls `beginDefaultAdminTransfer`. The new admin calls `acceptDefaultAdminTransfer` after the delay. The delay is 0 (`INITIAL_ADMIN_DELAY`). The new admin accepts in a later block. The admin can change it with `changeDefaultAdminDelay`.
 - `grantRole` and `revokeRole` revert for `DEFAULT_ADMIN_ROLE`. Use the transfer.
-- The admin cannot renounce the role in one step. `renounceRole` works only after `beginDefaultAdminTransfer(address(0))` and the delay. The contract then has no admin. Do not do this.
+- The admin cannot renounce the role in one step. `renounceRole` works only after `beginDefaultAdminTransfer(address(0))`. The contract then has no admin. Do not do this.
 - An admin transfer does not move `PAUSER_ROLE`. Revoke it from the old admin and grant it to the new admin by hand.
 
 ## Threat model
@@ -127,7 +127,7 @@ cast send $DISPENSER "withdraw(address,uint256)" $TO 1ether --rpc-url $RPC_URL -
    cast send $DISPENSER "beginDefaultAdminTransfer(address)" $NEW_ADMIN --rpc-url $RPC_URL --account <keystore>
    ```
 
-2. Read the schedule. Wait 1 day.
+2. Read the schedule.
 
    ```
    cast call $DISPENSER "pendingDefaultAdmin()(address,uint48)" --rpc-url $RPC_URL

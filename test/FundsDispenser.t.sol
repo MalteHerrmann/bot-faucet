@@ -54,12 +54,12 @@ contract FundsDispenserTest is Test {
         vm.prank(ADMIN);
         dispenser.beginDefaultAdminTransfer(newAdmin);
 
-        // ASSERT: the new admin cannot accept before the delay has passed.
+        // ASSERT: the new admin cannot accept in the same block as the begin call.
         vm.expectPartialRevert(IAccessControlDefaultAdminRules.AccessControlEnforcedDefaultAdminDelay.selector);
         vm.prank(newAdmin);
         dispenser.acceptDefaultAdminTransfer();
 
-        // ACT: accept the transfer after the delay.
+        // ACT: accept the transfer in a later block.
         vm.warp(vm.getBlockTimestamp() + dispenser.INITIAL_ADMIN_DELAY() + 1);
         vm.prank(newAdmin);
         dispenser.acceptDefaultAdminTransfer();
