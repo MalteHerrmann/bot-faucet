@@ -22,3 +22,7 @@ docs/
 # IDE files
 .vscode/
 .idea/
+
+# Coverage output
+coverage.txt
+lcov.info

@@ -180,26 +180,21 @@ The script checks that `ADMIN` is the default admin and holds `PAUSER_ROLE`. The
 
 ## Development
 
-Install the toolchain. `mise.toml` pins Foundry 1.9.0, which includes Solar 0.3.0.
+Install the toolchain. `mise.toml` pins Foundry 1.9.0, which includes Solar 0.3.0, and uv.
 
 ```
 mise install
 ```
 
-Run the checks.
+Run all checks. CI runs the same `Makefile` targets.
 
 ```
-forge build
-forge test
-forge fmt --check
-forge lint --deny warnings
-forge coverage --use 0.8.38 --no-match-coverage "(test|script|lib)/" --report summary
-FOUNDRY_PROFILE=ci forge test
-FOUNDRY_PROFILE=ci forge test --use 0.8.38
-FOUNDRY_SOLC_VERSION=0.8.38 uvx --from slither-analyzer slither . --config-file slither.config.json
+make ci-gate
 ```
 
-The contracts compile with [Solar](https://github.com/paradigmxyz/solar) (`solc = "solar"` in `foundry.toml`). These steps use solc 0.8.38. [#6](https://github.com/MalteHerrmann/bot-faucet/issues/6) tracks the move to Solar.
+To run one check, run its target: `make fmt`, `make lint`, `make build`, `make test`, `make coverage`, `make test-solc` or `make slither`.
+
+The contracts compile with [Solar](https://github.com/paradigmxyz/solar) (`solc = "solar"` in `foundry.toml`). These steps use solc 0.8.38 (`SOLC` in the `Makefile`). [#6](https://github.com/MalteHerrmann/bot-faucet/issues/6) tracks the move to Solar.
 
 - Live deploys. Block explorers cannot verify Solar bytecode ([sourcify#3043](https://github.com/argotorg/sourcify/issues/3043)). The `test-solc` CI job tests this bytecode.
 - Coverage. Solar source maps report too low ([solar#2300](https://github.com/paradigmxyz/solar/issues/2300)).
@@ -217,7 +212,7 @@ Test layout:
 
 ## CI
 
-CI runs on pushes to `main`, on pull requests, and on manual dispatch. Actions are pinned by commit SHA. Foundry is pinned to v1.9.0. The `test` job runs `forge fmt --check`, `forge lint --deny warnings` (any warning fails), `forge build --sizes`, and `forge test` with the `ci` profile (5000 fuzz runs, 1024 invariant runs). It then checks coverage with solc. Every `src/` file must have 100% lines, statements, branches, and functions. The `slither` job runs Slither 0.11.6 on a solc build and fails on medium severity or higher. The `test-solc` job runs `forge test` on solc with the optimizer on. Live deploys use this bytecode. Dependabot updates actions and git submodules every week.
+CI runs on pushes to `main`, on pull requests, and on manual dispatch. Actions are pinned by commit SHA. Foundry is pinned to v1.9.0. Each check step calls one `Makefile` target. The `test` job runs `make fmt`, `make lint` (any lint warning fails), `make build`, and `make test` with the `ci` profile (5000 fuzz runs, 1024 invariant runs). It then runs `make coverage`, which checks coverage with solc. Each step also runs when an earlier step fails. Every `src/` file must have 100% lines, statements, branches, and functions. The `slither` job runs `make slither`: Slither 0.11.6 on a solc build. It fails on medium severity or higher. The `test-solc` job runs `make test-solc`: the tests on solc with the optimizer on. Live deploys use this bytecode. Dependabot updates actions and git submodules every week.
 
 ## Design decisions
 
