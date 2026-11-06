@@ -176,9 +176,11 @@ ADMIN=<multisig> forge script script/Deploy.s.sol --rpc-url $RPC_URL --account <
 
 The script checks that `ADMIN` is the default admin and holds `PAUSER_ROLE`. Then it logs the contract address. The signer never comes from an env var. Pass it on the command line. `foundry.toml` has no `[etherscan]` section, so set a block explorer API key for `--verify`.
 
+The script compiles with Solar. Block explorer verification of Solar bytecode is not tested. To deploy solc bytecode, add `--use 0.8.38`.
+
 ## Development
 
-Install the toolchain. `mise.toml` pins Foundry 1.8.6.
+Install the toolchain. `mise.toml` pins Foundry 1.9.0, which includes Solar 0.3.0.
 
 ```
 mise install
@@ -191,10 +193,17 @@ forge build
 forge test
 forge fmt --check
 forge lint --deny warnings
-forge coverage --no-match-coverage "(test|script|lib)/" --report summary
+forge coverage --use 0.8.38 --no-match-coverage "(test|script|lib)/" --report summary
 FOUNDRY_PROFILE=ci forge test
-uvx --from slither-analyzer slither . --config-file slither.config.json
+FOUNDRY_SOLC_VERSION=0.8.38 uvx --from slither-analyzer slither . --config-file slither.config.json
 ```
+
+The contracts compile with [Solar](https://github.com/paradigmxyz/solar) (`solc = "solar"` in `foundry.toml`). Two checks use solc 0.8.38:
+
+- Coverage. Solar source maps report too low ([solar#2300](https://github.com/paradigmxyz/solar/issues/2300)).
+- Slither. Solar gives no AST, and Slither then checks nothing and passes ([solar#2293](https://github.com/paradigmxyz/solar/issues/2293)).
+
+In tests that call `vm.warp` or `vm.roll`, read the block values with `vm.getBlockTimestamp()` and `vm.getBlockNumber()`. Solar can read a saved `block.timestamp` again after the warp. `forge lint` flags this (`environment-read-across-mutation`).
 
 Test layout:
 
@@ -206,7 +215,7 @@ Test layout:
 
 ## CI
 
-CI runs on pushes to `main`, on pull requests, and on manual dispatch. Actions are pinned by commit SHA. Foundry is pinned to v1.8.6. The `test` job runs `forge fmt --check`, `forge lint --deny warnings` (any warning fails), `forge build --sizes`, and `forge test` with the `ci` profile (5000 fuzz runs, 1024 invariant runs). It then checks coverage. Every `src/` file must have 100% lines, statements, branches, and functions. The `slither` job runs Slither 0.11.6 and fails on medium severity or higher. Dependabot updates actions and git submodules every week.
+CI runs on pushes to `main`, on pull requests, and on manual dispatch. Actions are pinned by commit SHA. Foundry is pinned to v1.9.0. The `test` job runs `forge fmt --check`, `forge lint --deny warnings` (any warning fails), `forge build --sizes`, and `forge test` with the `ci` profile (5000 fuzz runs, 1024 invariant runs). It then checks coverage with solc. Every `src/` file must have 100% lines, statements, branches, and functions. The `slither` job runs Slither 0.11.6 on a solc build and fails on medium severity or higher. Dependabot updates actions and git submodules every week.
 
 ## Design decisions
 
