@@ -74,6 +74,26 @@ jobs:
           name: coverage-lcov
           path: lcov.info
 
+  # Live deploys use solc bytecode. This job tests it with the optimizer on, parallel to the Solar tests.
+  test-solc:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
+        with:
+          version: v1.9.0
+
+      - name: Test
+        run: forge test --use 0.8.38 -vvv
 
   slither:
     runs-on: ubuntu-latest
