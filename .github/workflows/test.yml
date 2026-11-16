@@ -14,10 +14,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # Use the ci profile from foundry.toml.
-  FOUNDRY_PROFILE: ci
-
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -35,33 +31,35 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
         with:
-          version: v1.8.6
+          version: v1.9.0
 
-      - name: Show Forge version
-        run: forge --version
+      # Foundry 1.9.0 includes Solar 0.3.0. foundry.toml selects it as the compiler.
+      - name: Show Forge and Solar versions
+        run: |
+          forge --version
+          solar --version
 
+      # The checks are make targets (see Makefile), the same as a local `make ci-gate`.
+      # Each check also runs when an earlier one fails, so the job shows all results.
       - name: Format
-        run: forge fmt --check
+        if: ${{ !cancelled() }}
+        run: make fmt
 
-      # Fail on any lint warning (high, medium, low severity).
       - name: Lint
-        run: forge lint --deny warnings
+        if: ${{ !cancelled() }}
+        run: make lint
 
       - name: Build
-        run: forge build --sizes
+        if: ${{ !cancelled() }}
+        run: make build
 
       - name: Test
-        run: forge test -vvv
+        if: ${{ !cancelled() }}
+        run: make test
 
       - name: Coverage gate
-        shell: bash
-        run: |
-          forge coverage --no-match-coverage "(test|script|lib)/" --report summary --report lcov --report-file lcov.info > coverage.txt
-          cat coverage.txt
-          # A missing table means coverage did not run. Fail instead of passing silently.
-          grep -q '^| src/' coverage.txt
-          # Fail when any src row is below 100% on lines, statements, branches or functions.
-          awk -F'|' '/^\| src\//{ for (i = 3; i <= 6; i++) if ($i !~ /100\.00%/) bad = 1 } END { exit bad }' coverage.txt
+        if: ${{ !cancelled() }}
+        run: make coverage
 
       - name: Upload coverage
         if: always()
@@ -70,14 +68,12 @@ jobs:
           name: coverage-lcov
           path: lcov.info
 
-  slither:
+  # Live deploys use solc bytecode. This job tests it parallel to the Solar tests.
+  test-solc:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     timeout-minutes: 20
-    env:
-      # Slither compiles with the default profile, the same as a local run.
-      FOUNDRY_PROFILE: default
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -88,15 +84,34 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
         with:
-          version: v1.8.6
+          version: v1.9.0
 
-      - name: Install Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - name: Test
+        run: make test-solc
+
+  slither:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          python-version: "3.12"
+          persist-credentials: false
+          submodules: recursive
 
-      # Same Slither version as the local dry run. Foundry and solc come from the pinned steps above.
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
+        with:
+          version: v1.9.0
+
+      # Same uv version as mise.toml. The Makefile pins Slither and Python.
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+          enable-cache: false
+
       - name: Run Slither
-        run: |
-          pip install slither-analyzer==0.11.6
-          slither . --config-file slither.config.json
+        run: make slither
